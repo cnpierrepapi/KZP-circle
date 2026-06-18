@@ -6,12 +6,15 @@ Use this to build a "deploy a Solana program, unblock the common failures" skill
 
 ## The one mental model that explains most of it
 There are **three toolchain zones**, and you must land in the middle:
-- **Too old** (e.g. Solana SBF Rust 1.75): fails to compile modern build deps → `edition2024 required`.
-- **Too new** (e.g. Solana Playground's bleeding-edge toolchain): compiles to an sBPF VM version the
-  cluster hasn't enabled → `sbpf_version ... not enabled` at deploy.
-- **Just right** (e.g. **Solana 1.18.26** + a **native** program): compiles cleanly *and* emits
-  sBPFv1, which devnet runs.
-Pin the toolchain; don't use "latest" blindly.
+- **Too old** (e.g. Solana **1.18.26** → SBF Rust 1.75): can't compile modern transitive crates
+  (`zeroize_derive`, `block-buffer 0.12`, …) → `edition2024 required`, in an *endless cascade* you
+  cannot pin your way out of. **This is the trap** — pinning to an old Solana to force sBPFv1
+  backfires.
+- **Too new / bleeding-edge** (e.g. Solana **Playground**): emits an sBPF VM version *ahead* of what
+  the cluster has enabled → `sbpf_version ... not enabled` at deploy.
+- **Just right = the latest OFFICIAL stable** (`release.anza.xyz/stable`): its Rust is new enough to
+  compile every dependency, and its sBPF is exactly what mainnet/devnet (running that same stable)
+  accept. **Use official stable — not a pinned-old version, and not Playground's edge.**
 
 ---
 
