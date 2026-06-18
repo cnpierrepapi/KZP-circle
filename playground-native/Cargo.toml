@@ -1,0 +1,19 @@
+[package]
+name = "kzp_circle"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "1.18.26"
+borsh = "0.10.4"
+spl-token = { version = "4.0", features = ["no-entrypoint"] }
+
+[profile.release]
+overflow-checks = true
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
