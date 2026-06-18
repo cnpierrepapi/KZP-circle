@@ -3,6 +3,9 @@ name = "kzp_circle"
 version = "0.1.0"
 edition = "2021"
 
+# Stand alone — this crate is NOT part of the root Anchor workspace.
+[workspace]
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
