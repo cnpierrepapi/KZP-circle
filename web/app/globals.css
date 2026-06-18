@@ -41,3 +41,5 @@ td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fo
 .note { color: var(--muted); font-size: 12px; margin-top: 10px; line-height: 1.5; }
 .warn { color: var(--warn); }
 .empty { color: var(--muted); font-size: 14px; padding: 16px 0; }
+.ok-note { color: var(--accent); font-size: 13px; margin-top: 10px; line-height: 1.5; }
+.badge.warnbadge { color: var(--warn); border-color: #5a4a1f; }

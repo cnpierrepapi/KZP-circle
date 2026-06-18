@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { rewards } from "@/lib/rewards/mockClient";
+import { mandate } from "@/lib/mandate/mockClient";
 
 export async function GET() {
-  return NextResponse.json(await rewards.getState());
+  return NextResponse.json(await mandate.getState());
 }

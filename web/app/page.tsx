@@ -5,27 +5,29 @@ import { useEffect, useState } from "react";
 const USDC_DECIMALS = 6;
 const usdc = (base: number) => (base / 10 ** USDC_DECIMALS).toFixed(4);
 
-interface WorkClaim {
+interface Pull {
   nonce: number;
   label: string;
-  quantity: number;
-  reward: number;
-  signature: string;
+  amount: number;
+  remaining: number;
 }
-interface RewardsState {
-  deposited: number;
-  totalRewarded: number;
-  vaultBalance: number;
-  agentBalance: number;
-  claims: WorkClaim[];
+interface MandateState {
+  active: boolean;
+  funded: number;
+  escrowBalance: number;
+  providerEarned: number;
+  maxPerPeriod: number;
+  spentThisPeriod: number;
+  periodSecs: number;
+  secondsUntilReset: number;
+  lowBalanceThreshold: number;
+  lowBalance: boolean;
+  pulls: Pull[];
 }
-interface Lead {
-  name: string;
-  industry: string;
-  category: string;
-  area: string;
-  rating: number;
-  reviews: number;
+interface WorkResult {
+  label: string;
+  amount: number;
+  status: string;
 }
 interface Draft {
   industry: string;
@@ -35,12 +37,21 @@ interface Draft {
   model: string;
   hasEmDash: boolean;
 }
+interface Lead {
+  name: string;
+  industry: string;
+  category: string;
+  area: string;
+  rating: number;
+  reviews: number;
+}
 
 export default function Home() {
-  const [state, setState] = useState<RewardsState | null>(null);
+  const [state, setState] = useState<MandateState | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [skipped, setSkipped] = useState<string[]>([]);
+  const [results, setResults] = useState<WorkResult[]>([]);
+  const [refunded, setRefunded] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = async () => setState(await (await fetch("/api/state")).json());
@@ -48,13 +59,10 @@ export default function Home() {
     refresh();
   }, []);
 
-  const deposit = async () => {
+  const fund = async () => {
     setBusy(true);
-    await fetch("/api/deposit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: 1_000_000 }),
-    });
+    setRefunded(null);
+    await fetch("/api/fund", { method: "POST" });
     await refresh();
     setBusy(false);
   };
@@ -64,7 +72,15 @@ export default function Home() {
     const res = await fetch("/api/run", { method: "POST" }).then((r) => r.json());
     setLeads(res.leads ?? []);
     setDrafts(res.drafts ?? []);
-    setSkipped(res.skipped ?? []);
+    setResults(res.results ?? []);
+    setState(res.state ?? null);
+    setBusy(false);
+  };
+
+  const cancel = async () => {
+    setBusy(true);
+    const res = await fetch("/api/cancel", { method: "POST" }).then((r) => r.json());
+    setRefunded(res.refunded ?? 0);
     setState(res.state ?? null);
     setBusy(false);
   };
@@ -73,52 +89,104 @@ export default function Home() {
     setBusy(true);
     setLeads([]);
     setDrafts([]);
-    setSkipped([]);
+    setResults([]);
+    setRefunded(null);
     setState(await (await fetch("/api/reset", { method: "POST" })).json());
     setBusy(false);
   };
 
   return (
     <main className="wrap">
-      <h1>Agent Rewards</h1>
+      <h1>Standing Order</h1>
       <p className="sub">
-        Escrow USDC. An AI agent fetches real Warsaw businesses, drafts per-industry pitches with
-        Claude Sonnet (no em dashes), and sends batches. The vault pays the agent per attested unit
-        of work. Mock mode: the on-chain program swaps in later behind the same interface.
+        The subscription that can&apos;t overcharge you. Grammarly takes your full $30 up front and
+        keeps it if you cancel. Here you fund an escrow once, the provider pulls only as it serves
+        you (never above the per-period cap), unused funds roll over and never expire, and cancelling
+        refunds every cent that was not used. Demo provider: an AI outreach agent working real Warsaw
+        leads.
       </p>
+
+      {state?.lowBalance && state.active && (
+        <p className="note warn">
+          ⚠ LowBalance event: escrow {usdc(state.escrowBalance)} USDC is below the{" "}
+          {usdc(state.lowBalanceThreshold)} threshold. On-chain this is an emitted notification.
+        </p>
+      )}
+      {refunded !== null && (
+        <p className="note ok-note">
+          ✓ Cancelled. Refunded {usdc(refunded)} USDC of unused balance back to you. The provider
+          only kept what it actually pulled.
+        </p>
+      )}
 
       <div className="grid">
         <div className="card">
-          <div className="k">Vault (escrow)</div>
-          <div className="v">{state ? usdc(state.vaultBalance) : "0.0000"}</div>
+          <div className="k">Your escrow</div>
+          <div className="v">{state ? usdc(state.escrowBalance) : "0.0000"}</div>
         </div>
         <div className="card">
-          <div className="k">Agent earned</div>
-          <div className="v green">{state ? usdc(state.agentBalance) : "0.0000"}</div>
+          <div className="k">Provider took</div>
+          <div className="v blue">{state ? usdc(state.providerEarned) : "0.0000"}</div>
         </div>
         <div className="card">
-          <div className="k">Deposited</div>
-          <div className="v blue">{state ? usdc(state.deposited) : "0.0000"}</div>
+          <div className="k">Cap used this period</div>
+          <div className="v green">
+            {state ? `${usdc(state.spentThisPeriod)} / ${usdc(state.maxPerPeriod)}` : "0 / 0"}
+          </div>
         </div>
       </div>
 
       <div className="row">
-        <button onClick={deposit} disabled={busy}>
-          Deposit 1 USDC
+        <button onClick={fund} disabled={busy || (state ? !state.active : false)}>
+          Fund 0.2 USDC
         </button>
-        <button onClick={run} disabled={busy} className="secondary">
+        <button onClick={run} disabled={busy || (state ? !state.active : false)} className="secondary">
           {busy ? "Working..." : "Run agent"}
+        </button>
+        <button onClick={cancel} disabled={busy || (state ? !state.active : false)} className="ghost">
+          Cancel &amp; refund
         </button>
         <button onClick={reset} disabled={busy} className="ghost">
           Reset
         </button>
       </div>
 
-      {skipped.length > 0 && (
-        <p className="note warn">
-          Vault ran dry, skipped {skipped.length} unit(s): {skipped.join(", ")}. Deposit more to
-          cover them.
+      {state && state.active && (
+        <p className="note">
+          Period cap resets in ~{state.secondsUntilReset}s. The provider cannot exceed{" "}
+          {usdc(state.maxPerPeriod)} USDC per period no matter how much work it claims, which is why
+          some pulls below are refused.
         </p>
+      )}
+
+      {results.length > 0 && (
+        <div className="section">
+          <h2>This run</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Work</th>
+                <th>Amount (USDC)</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.label}</td>
+                  <td className="reward">{usdc(r.amount)}</td>
+                  <td>
+                    {r.status === "paid" ? (
+                      <span className="badge ok">paid</span>
+                    ) : (
+                      <span className="badge warnbadge">{r.status}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {leads.length > 0 && (
@@ -149,12 +217,10 @@ export default function Home() {
         </div>
       )}
 
-      <div className="section">
-        <h2>Pitches (per industry, Sonnet-written, em-dash free)</h2>
-        {drafts.length === 0 ? (
-          <div className="empty">Run the agent to generate pitches.</div>
-        ) : (
-          drafts.map((d) => (
+      {drafts.length > 0 && (
+        <div className="section">
+          <h2>Pitches (per industry, Sonnet-written, em-dash free)</h2>
+          {drafts.map((d) => (
             <div className="draft" key={d.industry}>
               <span className="ind">{d.industry}</span>
               <span className="badge">{d.model}</span>
@@ -165,33 +231,31 @@ export default function Home() {
                 {d.body}
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="section">
-        <h2>Reward claims</h2>
-        {!state || state.claims.length === 0 ? (
-          <div className="empty">No claims yet.</div>
+        <h2>Pulls</h2>
+        {!state || state.pulls.length === 0 ? (
+          <div className="empty">No pulls yet.</div>
         ) : (
           <table>
             <thead>
               <tr>
                 <th>#</th>
                 <th>Work</th>
-                <th>Qty</th>
-                <th>Reward (USDC)</th>
-                <th>Signature</th>
+                <th>Amount (USDC)</th>
+                <th>Escrow after</th>
               </tr>
             </thead>
             <tbody>
-              {state.claims.map((c) => (
-                <tr key={c.nonce}>
-                  <td className="mono">{c.nonce}</td>
-                  <td>{c.label}</td>
-                  <td>{c.quantity}</td>
-                  <td className="reward">{usdc(c.reward)}</td>
-                  <td className="mono">{c.signature}</td>
+              {state.pulls.map((p) => (
+                <tr key={p.nonce}>
+                  <td className="mono">{p.nonce}</td>
+                  <td>{p.label}</td>
+                  <td className="reward">{usdc(p.amount)}</td>
+                  <td className="mono">{usdc(p.remaining)}</td>
                 </tr>
               ))}
             </tbody>
@@ -200,10 +264,11 @@ export default function Home() {
       </div>
 
       <p className="note">
-        Trust model: in production a deployed Solana program holds the escrow and a trusted oracle
-        co-signs each claim. Here that logic runs in memory so the full flow is demoable without the
-        chain. Set <span className="mono">ANTHROPIC_API_KEY</span> to use real Sonnet pitches;
-        without it the agent falls back to a built-in template.
+        On-chain (program <span className="mono">standing_order</span>): escrow lives in a PDA you
+        control, the per-period cap is enforced by <span className="mono">pull</span>,{" "}
+        <span className="mono">cancel</span> refunds the remainder, and a{" "}
+        <span className="mono">LowBalance</span> event fires below the threshold. This page runs that
+        logic in memory; set <span className="mono">ANTHROPIC_API_KEY</span> for real Sonnet pitches.
       </p>
     </main>
   );

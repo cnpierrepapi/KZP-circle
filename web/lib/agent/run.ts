@@ -1,49 +1,48 @@
-import { RewardsClient } from "@/lib/rewards/types";
-import { WORK } from "@/lib/rewards/schedule";
+import { MandateClient, MandateState } from "@/lib/mandate/types";
+import { WORK } from "@/lib/mandate/schedule";
 import { findLeads, industries, Lead } from "./leads";
 import { draftTemplate, Draft } from "./draft";
+
+export interface WorkResult {
+  label: string;
+  amount: number;
+  status: "paid" | "RateLimitExceeded" | "InsufficientFunds" | "MandateInactive" | string;
+}
 
 export interface RunResult {
   city: string;
   leads: Lead[];
   drafts: Draft[];
-  skipped: string[];
-  state: Awaited<ReturnType<RewardsClient["getState"]>>;
+  results: WorkResult[];
+  state: MandateState;
 }
 
-export async function runAgent(client: RewardsClient): Promise<RunResult> {
+// One agent cycle: it tries to get paid for each unit of work by pulling from the
+// mandate. The mandate (not the agent) decides whether the pull is allowed.
+export async function runAgent(client: MandateClient): Promise<RunResult> {
   const leads = findLeads();
   const inds = industries();
-  const skipped: string[] = [];
+  const results: WorkResult[] = [];
 
-  // 1. Find leads — one reward unit per 10 fetches.
-  const units = Math.max(1, Math.floor(leads.length / 10));
-  await settle(client, WORK.FIND_LEADS.id, `Find leads (${leads.length} Warsaw businesses)`, units, skipped);
+  await tryPull(client, WORK.FIND_LEADS.amount, `Find leads (${leads.length} Warsaw businesses)`, results);
 
-  // 2. Draft one Sonnet template per industry (parallel).
-  const drafts = await Promise.all(inds.map((ind) => draftTemplate(ind, findLeads(ind))));
+  const drafts = await Promise.all(inds.map((i) => draftTemplate(i, findLeads(i))));
   for (const d of drafts) {
-    await settle(client, WORK.DRAFT.id, `Draft template: ${d.industry}`, 1, skipped);
+    await tryPull(client, WORK.DRAFT.amount, `Draft pitch: ${d.industry}`, results);
   }
 
-  // 3. Send a batch of 20 + one follow-up per industry.
   for (const ind of inds) {
-    await settle(client, WORK.SEND_BATCH.id, `Send batch + follow-up: ${ind}`, 1, skipped);
+    await tryPull(client, WORK.SEND_BATCH.amount, `Send batch + follow-up: ${ind}`, results);
   }
 
-  return { city: leads[0]?.city ?? "Warsaw", leads, drafts, skipped, state: await client.getState() };
+  return { city: leads[0]?.city ?? "Warsaw", leads, drafts, results, state: await client.getState() };
 }
 
-async function settle(
-  client: RewardsClient,
-  workType: number,
-  label: string,
-  qty: number,
-  skipped: string[]
-) {
+async function tryPull(client: MandateClient, amount: number, label: string, out: WorkResult[]) {
   try {
-    await client.claim(workType, label, qty);
-  } catch {
-    skipped.push(label);
+    await client.pull(amount, label);
+    out.push({ label, amount, status: "paid" });
+  } catch (e) {
+    out.push({ label, amount, status: (e as Error).message });
   }
 }

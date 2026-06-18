@@ -21,13 +21,20 @@ Subscriptions, direct debits, and standing orders all share the same three probl
 
 The control sits with the party taking your money. That is backwards.
 
+**Concrete case:** Grammarly charges the full ~$30 up front. Stop using it the next day and that
+$30 is gone, there is no refund of the unused portion, and any "credit" expires on their terms. You
+prepaid for a year of value and they captured all of it on day one. What you actually want: pay once
+into an account you still own, let them draw only as they serve you, keep the unused balance (it
+should roll over, not expire), and reclaim every cent you did not use the moment you cancel.
+
 ## How this works on Solana
 
 | Friction | On-chain guarantee |
 |----------|--------------------|
 | Custody  | Funds sit in a **PDA escrow** the payer controls; the provider never holds them. |
 | Overcharging | `pull` reverts if it exceeds `max_per_period` — the cap is **enforced by the program**, not the merchant. |
-| Cancelling | `cancel` deactivates the mandate and **refunds the full remainder in one transaction**, permissionlessly. |
+| Pay for what you use | The provider pulls incrementally as it serves you; the **unused balance stays in your escrow and rolls over** (it never expires). |
+| Cancelling | `cancel` deactivates the mandate and **refunds 100% of the unused remainder in one transaction**, permissionlessly. The Grammarly $30 you never used would come straight back. |
 | Visibility | Every `pull` emits `Charged`; crossing the threshold emits **`LowBalance`** (the on-chain notification). |
 
 Permissionless: anyone can open a mandate; a provider is just a pubkey. Token-native: settlement
