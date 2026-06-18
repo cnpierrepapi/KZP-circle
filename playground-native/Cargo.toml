@@ -2,14 +2,8 @@
 name = "kzp_circle"
 version = "0.1.0"
 edition = "2021"
-# Declare our real toolchain ceiling so the MSRV-aware resolver auto-avoids any
-# dependency that requires a newer Rust (edition2024 crates), instead of us pinning
-# them one by one.
-rust-version = "1.75.0"
 
-# Stand alone — NOT part of the root Anchor workspace. (MSRV-aware resolution is
-# enabled in .cargo/config.toml, not via `resolver = "3"`, which the SBF toolchain's
-# older Cargo can't parse.)
+# Stand alone — NOT part of the root Anchor workspace.
 [workspace]
 
 [lib]
@@ -19,12 +13,6 @@ crate-type = ["cdylib", "lib"]
 solana-program = "1.18.26"
 borsh = "0.10.4"
 spl-token = { version = "4.0", features = ["no-entrypoint"] }
-# Pin transitive crates whose newest versions require edition2024 (Rust 1.85),
-# which the sBPFv1 toolchain's Rust 1.75 can't compile. zeroize must be < 1.4 to
-# satisfy curve25519-dalek 3.2.1 (inside solana-program 1.18.26); zeroize_derive is
-# pinned so it doesn't jump to its edition2024 release.
-zeroize = "=1.3.0"
-zeroize_derive = "=1.4.2"
 
 [profile.release]
 overflow-checks = true
