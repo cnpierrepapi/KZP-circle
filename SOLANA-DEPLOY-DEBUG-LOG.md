@@ -92,10 +92,21 @@ There are **three toolchain zones**, and you must land in the middle:
 - **Fix:** the endpoint must be exactly `https://devnet.helius-rpc.com/?api-key=KEY` — no trailing
   path or slash.
 
-### 7. `Detected sbpf_version required by the executable which are not enabled`
-- **Cause:** Playground's toolchain compiled to a newer sBPF VM version than devnet enables.
-- **Fix:** build with an **older, pinned** toolchain — install **Solana 1.18.26**
-  (`sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"`) so `cargo-build-sbf` emits sBPFv1.
+### 7. `Detected sbpf_version required by the executable which are not enabled` (at deploy)
+- **Cause:** the build toolchain emitted an sBPF VM version newer than the cluster enabled. Happens
+  with **Playground** *and* with the **latest** local toolchain (its default sBPF runs ahead of devnet).
+- **WRONG fix:** downgrade everything to Solana 1.18.26 for sBPFv1 — its Rust 1.75 then can't compile
+  modern deps (the entire #3 edition2024 cascade). Don't go there.
+- **RIGHT fix (build new, target old):** keep the **latest** toolchain so every dependency compiles,
+  but **force the emitted sBPF down to the baseline v1** that all clusters enable:
+  ```bash
+  cargo build-sbf --arch sbfv1
+  # if the flag/value is rejected: cargo build-sbf --help | grep -i arch   (use the listed value)
+  # fallback: RUSTFLAGS="-C target-cpu=v1" cargo build-sbf
+  ```
+  This is the whole resolution of the saga: **new Rust to compile, sBPFv1 to deploy.**
+- **Reclaim stranded SOL first:** a failed deploy leaves a buffer account holding your lamports
+  (the CLI prints its seed phrase + address). Recover before retrying: `solana program close --buffers`.
 
 ### 8. `current package believes it's in a workspace when it's not`
 - **Cause:** a standalone crate living inside a repo that already has a root workspace `Cargo.toml`.
