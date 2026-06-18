@@ -1,5 +1,5 @@
 import { CircleClient, CircleState, Member, Payout } from "./types";
-import { PARAMS, multiplierBps } from "./schedule";
+import { PARAMS, multiplierBps, betaBps } from "./schedule";
 
 const NAMES = ["Ada", "Bola", "Chidi", "Dapo", "Emeka", "Funke"];
 // reliability of each simulated member (skip a period when (period+i+1) % mod === 0; 99 = never skip)
@@ -121,7 +121,7 @@ class MockCircleClient implements CircleClient {
     const front = this.eligible()[0];
     if (!front || this.vault < PARAMS.vMin) return this.snapshot();
     const share = Math.floor((front.points * this.vault) / this.pTotal);
-    const cap = Math.floor((PARAMS.betaBps * this.vault) / 10_000);
+    const cap = Math.floor((betaBps(front.streak) * this.vault) / 10_000);
     const w = Math.min(share, cap);
     const p: Payout = {
       round: this.round + 1,

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 const USDC = 1_000_000;
 const usd = (b: number) => "$" + (b / USDC).toFixed(2);
 const mult = (streak: number) => (1 + 0.1 * Math.min(streak, 7)).toFixed(1) + "x";
+// payout cap scales with streak: 10% (one-off) -> 33.3% (streak 7+)
+const betaBps = (streak: number) => 1000 + Math.floor((2333 * Math.min(Math.max(streak, 0), 7)) / 7);
 
 interface Member {
   id: string;
@@ -68,8 +70,9 @@ export default function Home() {
         Everyone funds a shared vault. Your points grow with how much and how often you contribute.
         When the vault crosses {s ? usd(s.vMin) : "$15"}, the front of the queue withdraws a slice
         sized by their share of points, more than they put in, but never enough to drain the pool.
-        Consistency pays: a 7-day streak lifts your points up to 1.7x, and missing a day costs you
-        10%. The Solana program enforces all of it.
+        Consistency pays twice: a 7-day streak lifts your points up to 1.7x AND raises your payout
+        cap from 10% to 33.3% of the vault; missing a day costs you 10%. The Solana program enforces
+        all of it.
       </p>
 
       {s?.youMissedLast && (
@@ -102,8 +105,13 @@ export default function Home() {
           <div className="v blue">{you ? usd(you.contributed) : "$0.00"}</div>
           <div className="k" style={{ marginTop: 6 }}>
             if you claimed now: {you && s && s.pTotal > 0
-              ? usd(Math.min(Math.floor((you.points * s.vault) / s.pTotal), Math.floor(0.5 * s.vault)))
-              : "$0.00"}
+              ? usd(
+                  Math.min(
+                    Math.floor((you.points * s.vault) / s.pTotal),
+                    Math.floor((betaBps(you.streak) * s.vault) / 10000)
+                  )
+                )
+              : "$0.00"}{you ? ` (cap ${(betaBps(you.streak) / 100).toFixed(1)}%)` : ""}
           </div>
         </div>
       </div>
@@ -206,9 +214,10 @@ export default function Home() {
       <p className="note">
         On-chain (program <span className="mono">circle</span>): the vault is a PDA escrow; points
         accrue from amount × streak; <span className="mono">claim</span> pays{" "}
-        <span className="mono">min(points/Σpoints · vault, 50% · vault)</span> then resets you to the
-        back. You can take more than you contributed because consistency redistributes from the
-        infrequent, and the pool can never be drained because any payout is only a share of it.
+        <span className="mono">min(points/Σpoints · vault, β(streak) · vault)</span> where the cap
+        β rises with your streak from 10% to 33.3%, then resets you to the back. You can take more
+        than you contributed because consistency redistributes from the infrequent, and the pool can
+        never be drained because any payout is only a capped share of it.
       </p>
     </main>
   );

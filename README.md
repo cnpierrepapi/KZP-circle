@@ -21,7 +21,7 @@ whole thing rests on personal trust and breaks at scale or across strangers.
 |----------|--------------------|
 | Organizer holds the pot | Funds live in a **PDA escrow**; no person ever has custody. |
 | "Can I take more than I put in?" | Yes — your payout is `points/Σpoints · vault`, and points are lifted by your streak, so a consistent member withdraws more than they contributed. |
-| "Won't that drain the vault?" | No — a payout is only a **share** of the pool (capped at 50%), so `withdrawal ≤ your share ≤ vault`. **Un-drainable by arithmetic.** |
+| "Won't that drain the vault?" | No — a payout is only a **share** of the pool (capped at 10–33.3%, the cap itself scaling with your streak), so `withdrawal ≤ your share ≤ vault`. **Un-drainable by arithmetic.** |
 | Freeloaders / quitters | Points only come from real contributions; miss a period and your points decay and your streak resets. |
 
 Permissionless (anyone opens or joins a circle), token-native (USDC), and trustless where it
@@ -33,7 +33,8 @@ counts: nobody trusts an organizer, and the vault cannot be over-drawn.
 contribute:  points += amount × (1 + 0.10 · min(streak, 7))   // up to 1.7×
 miss a period:  streak → 0,  points × 0.9                       // loss-aversion decay
 payout (front of queue, when vault ≥ V_min):
-             W = min( points / Σpoints · vault ,  0.5 · vault )
+             β(streak) = 10% → 33.3%, scaling linearly with streak (0 → 7)
+             W = min( points / Σpoints · vault ,  β(streak) · vault )
              then points → 0, rotate to the back
 ```
 
@@ -43,7 +44,7 @@ payout (front of queue, when vault ≥ V_min):
 - **10% decay on a miss.** Loss aversion (losses ≈ 2× gains) is the strongest motivator here —
   people show up to avoid *losing* standing. 10% stings but is recoverable, so a slip doesn't cause
   a rage-quit.
-- **50% payout cap (β).** Keeps the vault visibly solvent, which itself increases contribution.
+- **Streak-scaled payout cap (β: 10% → 33.3%).** The withdrawal ceiling itself rises with consistency, so a one-off contributor can take at most 10% of the vault while a fully consistent member can take up to a third — rewarding loyalty a second way, while keeping ≥ two-thirds of the pool for everyone else.
 - **V_min + time backstop.** The goal-gradient effect: a visible target drives a contribution surge.
 
 ## Account model

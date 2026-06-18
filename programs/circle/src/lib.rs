@@ -13,12 +13,14 @@ declare_id!("11111111111111111111111111111111");
 // they put in, but only a fraction of the pool, so the vault is never drained. Solvent by
 // construction: a withdrawal is always <= your proportional share <= the vault.
 //
-// Behavioral tuning (see README): a 7-period streak cap at +10%/period (max 1.7x) rewards
-// consistency; a 50% per-payout cap keeps the pool visibly solvent.
+// Behavioral tuning (see README): a 7-period streak at +10%/period (max 1.7x) rewards
+// consistency; the per-payout cap ALSO scales with streak, from 10% (one-off) to 33.3%
+// (fully consistent), so loyalty raises both your points and your withdrawal ceiling.
 const ALPHA_BPS: u64 = 1000; // +10% points per consecutive streak step
 const STREAK_MAX: u32 = 7; // streak multiplier caps at 1.7x
 const STREAK_MIN_CLAIM: u32 = 1; // must contribute >= 2 periods in a row before claiming
-const BETA_BPS: u128 = 5000; // a single payout is capped at 50% of the vault
+const BETA_MIN_BPS: u128 = 1000; // one-off contributor: payout capped at 10% of the vault
+const BETA_MAX_BPS: u128 = 3333; // fully consistent (streak >= STREAK_MAX): up to 33.3%
 const SENTINEL: u64 = u64::MAX; // "never contributed"
 
 #[program]
@@ -110,7 +112,10 @@ pub mod circle {
 
         // share of the pool, capped at BETA_BPS
         let share = points * (v as u128) / p_total;
-        let cap = BETA_BPS * (v as u128) / 10_000;
+        // payout ceiling scales with consistency: 10% (one-off) -> 33.3% (streak >= STREAK_MAX)
+        let s = ctx.accounts.member.streak.min(STREAK_MAX) as u128;
+        let beta_bps = BETA_MIN_BPS + (BETA_MAX_BPS - BETA_MIN_BPS) * s / (STREAK_MAX as u128);
+        let cap = beta_bps * (v as u128) / 10_000;
         let w = share.min(cap) as u64;
         require!(w > 0, CircleError::NoPoints);
 

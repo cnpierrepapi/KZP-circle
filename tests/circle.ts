@@ -64,19 +64,19 @@ describe("circle (savings circle)", () => {
     await program.methods.join().accounts({ owner: bob.publicKey, circle }).signers([bob]).rpc();
   });
 
-  it("rewards consistency: Alice's streak earns more than a one-off", async () => {
-    // Alice contributes two consecutive periods (streak builds)
-    await program.methods.contribute(new BN(100_000)).accounts({ contributor: alice.publicKey, circle, owner: alice.publicKey, contributorTokenAccount: aliceAta }).rpc();
-    await sleep(1100);
-    await program.methods.contribute(new BN(100_000)).accounts({ contributor: alice.publicKey, circle, owner: alice.publicKey, contributorTokenAccount: aliceAta }).rpc();
-    // Bob contributes once (no streak)
-    await program.methods.contribute(new BN(300_000)).accounts({ contributor: bob.publicKey, circle, owner: bob.publicKey, contributorTokenAccount: bobAta }).signers([bob]).rpc();
+  it("rewards consistency: Alice's streak lifts her points above her dollars", async () => {
+    // Alice contributes three consecutive periods (streak builds to 2)
+    for (let k = 0; k < 3; k++) {
+      await program.methods.contribute(new BN(100_000)).accounts({ contributor: alice.publicKey, circle, owner: alice.publicKey, contributorTokenAccount: aliceAta }).rpc();
+      if (k < 2) await sleep(1100);
+    }
+    // Bob makes one large one-off contribution (no streak) -> deepens the pool
+    await program.methods.contribute(new BN(2_000_000)).accounts({ contributor: bob.publicKey, circle, owner: bob.publicKey, contributorTokenAccount: bobAta }).signers([bob]).rpc();
 
     const a = await program.account.member.fetch(memberA);
     const b = await program.account.member.fetch(memberB);
-    // Alice put in 200k across 2 periods, streak multiplied her points above raw dollars
-    assert.isTrue(a.points.toNumber() > 200_000, "streak should lift Alice's points above her dollars");
-    assert.equal(b.points.toNumber(), 300_000, "Bob (one-off) gets points == dollars");
+    assert.isTrue(a.points.toNumber() > 300_000, "streak should lift Alice's points above her 300k dollars");
+    assert.equal(b.points.toNumber(), 2_000_000, "Bob (one-off) gets points == dollars");
   });
 
   it("rejects a claim from a one-off contributor (not consistent)", async () => {
@@ -93,9 +93,9 @@ describe("circle (savings circle)", () => {
     const vault = Number(await bal(escrow));
     await program.methods.claim().accounts({ claimer: alice.publicKey, circle, owner: alice.publicKey, claimerTokenAccount: aliceAta }).rpc();
     const paid = Number(await bal(aliceAta)) - Number(before);
-    assert.isTrue(paid > 200_000, "Alice should withdraw more than her 200k contribution");
+    assert.isTrue(paid > 300_000, "Alice should withdraw more than her 300k contribution");
     assert.isTrue(Number(await bal(escrow)) > 0, "vault retains a balance for the others");
-    assert.isTrue(paid <= vault / 2 + 1, "single payout capped at 50% of the vault");
+    assert.isTrue(paid <= Math.ceil(vault / 3) + 1, "payout capped at <= 33.3% of the vault");
     const a = await program.account.member.fetch(memberA);
     assert.equal(a.points.toNumber(), 0, "points reset after payout");
   });
