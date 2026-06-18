@@ -1,0 +1,18 @@
+{
+  "name": "agent-rewards",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "forwardPorts": [3000, 8899],
+  "portsAttributes": {
+    "3000": { "label": "web app" },
+    "8899": { "label": "solana test validator" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer", "esbenp.prettier-vscode"]
+    }
+  }
+}
