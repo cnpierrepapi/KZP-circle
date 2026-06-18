@@ -1,13 +1,13 @@
 import { RewardsClient } from "@/lib/rewards/types";
 import { WORK } from "@/lib/rewards/schedule";
-import { findLeads, industries } from "./leads";
+import { findLeads, industries, Lead } from "./leads";
 import { draftTemplate, Draft } from "./draft";
 
-// Orchestrates one full agent run and settles each unit of work through the
-// rewards client (which, in mock mode, plays the role of program + oracle).
 export interface RunResult {
+  city: string;
+  leads: Lead[];
   drafts: Draft[];
-  skipped: string[]; // work that could not be paid (vault ran dry)
+  skipped: string[];
   state: Awaited<ReturnType<RewardsClient["getState"]>>;
 }
 
@@ -18,14 +18,12 @@ export async function runAgent(client: RewardsClient): Promise<RunResult> {
 
   // 1. Find leads — one reward unit per 10 fetches.
   const units = Math.max(1, Math.floor(leads.length / 10));
-  await settle(client, WORK.FIND_LEADS.id, `Find leads (${leads.length} fetched)`, units, skipped);
+  await settle(client, WORK.FIND_LEADS.id, `Find leads (${leads.length} Warsaw businesses)`, units, skipped);
 
-  // 2. Draft one template per industry.
-  const drafts: Draft[] = [];
-  for (const ind of inds) {
-    const d = draftTemplate(ind);
-    drafts.push(d);
-    await settle(client, WORK.DRAFT.id, `Draft template: ${ind}`, 1, skipped);
+  // 2. Draft one Sonnet template per industry (parallel).
+  const drafts = await Promise.all(inds.map((ind) => draftTemplate(ind, findLeads(ind))));
+  for (const d of drafts) {
+    await settle(client, WORK.DRAFT.id, `Draft template: ${d.industry}`, 1, skipped);
   }
 
   // 3. Send a batch of 20 + one follow-up per industry.
@@ -33,7 +31,7 @@ export async function runAgent(client: RewardsClient): Promise<RunResult> {
     await settle(client, WORK.SEND_BATCH.id, `Send batch + follow-up: ${ind}`, 1, skipped);
   }
 
-  return { drafts, skipped, state: await client.getState() };
+  return { city: leads[0]?.city ?? "Warsaw", leads, drafts, skipped, state: await client.getState() };
 }
 
 async function settle(
@@ -46,6 +44,6 @@ async function settle(
   try {
     await client.claim(workType, label, qty);
   } catch {
-    skipped.push(label); // vault could not cover it — surfaced in the UI
+    skipped.push(label);
   }
 }

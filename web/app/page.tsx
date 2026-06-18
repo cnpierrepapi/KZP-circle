@@ -11,7 +11,6 @@ interface WorkClaim {
   quantity: number;
   reward: number;
   signature: string;
-  at: string;
 }
 interface RewardsState {
   deposited: number;
@@ -20,15 +19,26 @@ interface RewardsState {
   agentBalance: number;
   claims: WorkClaim[];
 }
+interface Lead {
+  name: string;
+  industry: string;
+  category: string;
+  area: string;
+  rating: number;
+  reviews: number;
+}
 interface Draft {
   industry: string;
+  city: string;
   subject: string;
   body: string;
+  model: string;
   hasEmDash: boolean;
 }
 
 export default function Home() {
   const [state, setState] = useState<RewardsState | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -43,7 +53,7 @@ export default function Home() {
     await fetch("/api/deposit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: 1_000_000 }), // 1 USDC
+      body: JSON.stringify({ amount: 1_000_000 }),
     });
     await refresh();
     setBusy(false);
@@ -52,6 +62,7 @@ export default function Home() {
   const run = async () => {
     setBusy(true);
     const res = await fetch("/api/run", { method: "POST" }).then((r) => r.json());
+    setLeads(res.leads ?? []);
     setDrafts(res.drafts ?? []);
     setSkipped(res.skipped ?? []);
     setState(res.state ?? null);
@@ -60,6 +71,7 @@ export default function Home() {
 
   const reset = async () => {
     setBusy(true);
+    setLeads([]);
     setDrafts([]);
     setSkipped([]);
     setState(await (await fetch("/api/reset", { method: "POST" })).json());
@@ -70,9 +82,9 @@ export default function Home() {
     <main className="wrap">
       <h1>Agent Rewards</h1>
       <p className="sub">
-        Escrow USDC. An AI agent finds leads, drafts per-industry emails (no em dashes), and sends
-        batches. The vault pays the agent per attested unit of work. Mock mode: the on-chain program
-        is swapped in later behind the same interface.
+        Escrow USDC. An AI agent fetches real Warsaw businesses, drafts per-industry pitches with
+        Claude Sonnet (no em dashes), and sends batches. The vault pays the agent per attested unit
+        of work. Mock mode: the on-chain program swaps in later behind the same interface.
       </p>
 
       <div className="grid">
@@ -109,14 +121,43 @@ export default function Home() {
         </p>
       )}
 
+      {leads.length > 0 && (
+        <div className="section">
+          <h2>Leads found — Warsaw, Poland ({leads.length})</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Business</th>
+                <th>Category</th>
+                <th>Area</th>
+                <th>Rating</th>
+                <th>Reviews</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l) => (
+                <tr key={l.name}>
+                  <td>{l.name}</td>
+                  <td className="mono">{l.category}</td>
+                  <td className="mono">{l.area}</td>
+                  <td>{l.rating}</td>
+                  <td>{l.reviews}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="section">
-        <h2>Drafts (per industry, em-dash free)</h2>
+        <h2>Pitches (per industry, Sonnet-written, em-dash free)</h2>
         {drafts.length === 0 ? (
-          <div className="empty">Run the agent to generate drafts.</div>
+          <div className="empty">Run the agent to generate pitches.</div>
         ) : (
           drafts.map((d) => (
             <div className="draft" key={d.industry}>
               <span className="ind">{d.industry}</span>
+              <span className="badge">{d.model}</span>
               {!d.hasEmDash && <span className="badge ok">no em dash</span>}
               <div className="body">
                 <strong>{d.subject}</strong>
@@ -161,7 +202,8 @@ export default function Home() {
       <p className="note">
         Trust model: in production a deployed Solana program holds the escrow and a trusted oracle
         co-signs each claim. Here that logic runs in memory so the full flow is demoable without the
-        chain. See the program in <span className="mono">programs/agent_rewards/src/lib.rs</span>.
+        chain. Set <span className="mono">ANTHROPIC_API_KEY</span> to use real Sonnet pitches;
+        without it the agent falls back to a built-in template.
       </p>
     </main>
   );
