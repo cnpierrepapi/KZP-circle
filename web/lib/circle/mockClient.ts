@@ -1,154 +1,101 @@
-import { CircleClient, CircleState, Member, Payout } from "./types";
-import { PARAMS, multiplierBps, betaBps } from "./schedule";
+import { CircleClient, CircleState, Member } from "./types";
+import { PARAMS, USDC } from "./schedule";
 
-const NAMES = ["Ada", "Bola", "Chidi", "Dapo", "Emeka", "Funke"];
-// reliability of each simulated member (skip a period when (period+i+1) % mod === 0; 99 = never skip)
-const SKIP_MOD = [99, 99, 3, 2, 4, 99];
-const SIM_AMT = [3, 2, 4, 5, 2, 6].map((d) => d * PARAMS.minContribution); // their per-period $
+const SIM_NAMES = ["Ada", "Bola", "Chidi", "Dapo", "Emeka", "Funke"];
 
-// Mirrors the on-chain math; simulates a small circle so the redistribution is visible.
-class MockCircleClient implements CircleClient {
-  private period = 0;
-  private round = 0;
-  private vault = 0;
-  private pTotal = 0;
-  private members: Member[] = [];
-  private payouts: Payout[] = [];
-  private youMissedLast = false;
+// Deposit cascade: each deposit splits 50% DOWN to earlier members (by share) and 50% UP,
+// gifted to the very next depositor. The first member's down-half goes to a locked floor.
+class MockCascadeClient implements CircleClient {
+  private poolTotal = 0;
+  private floor = 0;
+  private upReserve = 0;
+  private nextOrder = 1;
+  private simIdx = 0;
+  private members: Member[] = [
+    { id: "you", name: "You", you: true, order: 0, deposited: 0, balance: 0, withdrawn: 0 },
+  ];
 
-  constructor() {
-    this.seed();
-  }
-  private seed() {
-    this.period = 0;
-    this.round = 0;
-    this.vault = 0;
-    this.pTotal = 0;
-    this.payouts = [];
-    this.youMissedLast = false;
-    this.members = [
-      { id: "you", name: "You", you: true, points: 0, streak: 0, contributed: 0, lastPeriod: -1 },
-      ...NAMES.map((name, i) => ({
-        id: `m${i}`,
-        name,
-        you: false,
-        points: 0,
-        streak: 0,
-        contributed: 0,
-        lastPeriod: -1,
-      })),
-    ];
+  private get(id: string) {
+    return this.members.find((m) => m.id === id)!;
   }
 
-  private apply(m: Member, amount: number) {
-    if (m.lastPeriod >= 0) {
-      const gap = this.period - m.lastPeriod;
-      if (gap === 1) m.streak += 1;
-      else if (gap >= 2) m.streak = 0;
+  private depositBy(m: Member, amount: number) {
+    if (m.deposited === 0) m.order = this.nextOrder++; // assign join order on first deposit
+
+    // 1. the UP gift: this depositor receives the reserve left by the previous depositor
+    m.balance += this.upReserve;
+    this.upReserve = 0;
+
+    // 2. the DOWN half: split among earlier members by share of their deposits
+    const down = Math.floor(amount / 2);
+    const up = amount - down;
+    const earlier = this.members.filter((o) => o.deposited > 0 && o.id !== m.id);
+    const totalEarlier = earlier.reduce((s, o) => s + o.deposited, 0);
+    if (totalEarlier > 0) {
+      for (const o of earlier) o.balance += Math.floor((down * o.deposited) / totalEarlier);
     } else {
-      m.streak = 0;
+      this.floor += down; // first ever depositor: down-half is locked
     }
-    m.lastPeriod = this.period;
-    const gained = Math.floor((amount * multiplierBps(m.streak)) / 10_000);
-    m.points += gained;
-    m.contributed += amount;
-    this.pTotal += gained;
-    this.vault += amount;
-  }
 
-  private decay(m: Member) {
-    const after = Math.floor((m.points * PARAMS.decayBps) / 10_000);
-    this.pTotal -= m.points - after;
-    m.points = after;
-    m.streak = 0;
-  }
+    // 3. the UP half is held for the next depositor
+    this.upReserve = up;
 
-  private eligible(): Member[] {
-    // size OR consistency qualifies: anyone with points can claim (their share is
-    // sized by points and throttled by the streak-scaled cap)
-    return this.members.filter((m) => m.points > 0).sort((a, b) => b.points - a.points);
+    m.deposited += amount;
+    this.poolTotal += amount;
   }
 
   private snapshot(): CircleState {
-    const you = this.members.find((m) => m.you)!;
-    const front = this.eligible()[0] ?? null;
+    const joined = this.members.filter((m) => m.deposited > 0 || m.you);
     return {
-      period: this.period,
-      round: this.round,
-      vault: this.vault,
-      pTotal: this.pTotal,
-      vMin: PARAMS.vMin,
-      canPayout: this.vault >= PARAMS.vMin && front !== null,
-      frontId: front?.id ?? null,
-      youMissedLast: this.youMissedLast,
-      members: [...this.members].sort((a, b) => b.points - a.points),
-      payouts: [...this.payouts].reverse(),
-      // `you` extras are read off the members list client-side
-    } as CircleState;
+      poolTotal: this.poolTotal,
+      floor: this.floor,
+      upReserve: this.upReserve,
+      members: [...joined].sort((a, b) => (a.order || 99) - (b.order || 99)),
+      you: this.members.find((m) => m.you) ?? null,
+    };
   }
 
   async getState() {
     return this.snapshot();
   }
 
-  async contribute(amount: number) {
-    const a = Math.max(PARAMS.minContribution, Math.min(PARAMS.maxContribution, amount));
-    const you = this.members.find((m) => m.you)!;
-    this.apply(you, a);
-    this.youMissedLast = false;
+  async deposit(amount: number) {
+    const a = Math.max(PARAMS.minDeposit, Math.min(PARAMS.maxDeposit, amount));
+    this.depositBy(this.get("you"), a);
     return this.snapshot();
   }
 
   async advance() {
-    // 1. simulated members contribute for the current period (by their reliability)
-    this.members.forEach((m, idx) => {
-      if (m.you) return;
-      const i = idx - 1;
-      if ((this.period + i + 1) % SKIP_MOD[i] !== 0) this.apply(m, SIM_AMT[i]);
-    });
-    // 2. decay anyone (including you) who missed THIS period
-    const you = this.members.find((m) => m.you)!;
-    this.youMissedLast = you.lastPeriod < this.period && you.points > 0;
-    this.members.forEach((m) => {
-      if (m.lastPeriod < this.period && m.points > 0) this.decay(m);
-    });
-    // 3. time passes
-    this.period += 1;
+    const name = SIM_NAMES[this.simIdx % SIM_NAMES.length];
+    let m = this.members.find((x) => x.name === name && !x.you);
+    if (!m) {
+      m = { id: "m" + this.simIdx, name, you: false, order: 0, deposited: 0, balance: 0, withdrawn: 0 };
+      this.members.push(m);
+    }
+    const amt = (2 + (this.simIdx % 5)) * USDC; // $2 - $6
+    this.simIdx++;
+    this.depositBy(m, amt);
     return this.snapshot();
   }
 
-  async payout() {
-    const front = this.eligible()[0];
-    if (!front || this.vault < PARAMS.vMin) return this.snapshot();
-    const share = Math.floor((front.points * this.vault) / this.pTotal);
-    const cap = Math.floor((betaBps(front.streak) * this.vault) / 10_000);
-    const w = Math.min(share, cap);
-    // burn only the points actually paid out; residual carries forward (no forfeiture)
-    const burned = Math.min(Math.floor((w * this.pTotal) / this.vault), front.points);
-    const p: Payout = {
-      round: this.round + 1,
-      name: front.name,
-      contributed: front.contributed,
-      paidOut: w,
-      remaining: this.vault - w,
-    };
-    this.payouts.push(p);
-    this.vault -= w;
-    this.pTotal -= burned;
-    front.points -= burned;
-    front.streak = 0;
-    if (front.points === 0) {
-      front.contributed = 0;
-      front.lastPeriod = -1;
-    }
-    this.round += 1;
+  async withdraw() {
+    const you = this.get("you");
+    you.withdrawn += you.balance;
+    you.balance = 0;
     return this.snapshot();
   }
 
   async reset() {
-    this.seed();
+    this.poolTotal = 0;
+    this.floor = 0;
+    this.upReserve = 0;
+    this.nextOrder = 1;
+    this.simIdx = 0;
+    this.members = [
+      { id: "you", name: "You", you: true, order: 0, deposited: 0, balance: 0, withdrawn: 0 },
+    ];
   }
 }
 
-const g = globalThis as unknown as { __circle?: CircleClient };
-export const circle: CircleClient = g.__circle ?? (g.__circle = new MockCircleClient());
+const g = globalThis as unknown as { __cascade?: CircleClient };
+export const circle: CircleClient = g.__cascade ?? (g.__cascade = new MockCascadeClient());

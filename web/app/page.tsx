@@ -4,36 +4,22 @@ import { useEffect, useState } from "react";
 
 const USDC = 1_000_000;
 const usd = (b: number) => "$" + (b / USDC).toFixed(2);
-const mult = (streak: number) => (1 + 0.1 * Math.min(streak, 7)).toFixed(1) + "x";
-// payout cap scales with streak: 10% (one-off) -> 33.3% (streak 7+)
-const betaBps = (streak: number) => 1000 + Math.floor((2333 * Math.min(Math.max(streak, 0), 7)) / 7);
 
 interface Member {
   id: string;
   name: string;
   you: boolean;
-  points: number;
-  streak: number;
-  contributed: number;
-}
-interface Payout {
-  round: number;
-  name: string;
-  contributed: number;
-  paidOut: number;
-  remaining: number;
+  order: number;
+  deposited: number;
+  balance: number;
+  withdrawn: number;
 }
 interface CircleState {
-  period: number;
-  round: number;
-  vault: number;
-  pTotal: number;
-  vMin: number;
-  canPayout: boolean;
-  frontId: string | null;
-  youMissedLast: boolean;
+  poolTotal: number;
+  floor: number;
+  upReserve: number;
   members: Member[];
-  payouts: Payout[];
+  you: Member | null;
 }
 
 export default function Home() {
@@ -59,61 +45,33 @@ export default function Home() {
     setBusy(false);
   };
 
-  const you = s?.members.find((m) => m.you);
-  const sharePct = s && s.pTotal > 0 && you ? (you.points / s.pTotal) * 100 : 0;
-  const progress = s ? Math.min(100, (s.vault / s.vMin) * 100) : 0;
+  const net = (m: Member) => m.balance + m.withdrawn - m.deposited;
+  const you = s?.you;
 
   return (
     <main className="wrap">
-      <h1>Esusu — a trustless savings circle</h1>
+      <h1>KZP — an on-chain contribution circle</h1>
       <p className="sub">
-        Everyone keeps funding a shared vault over time. Your points grow with how much and how often
-        you contribute. When the vault crosses {s ? usd(s.vMin) : "$15"}, the front of the queue
-        withdraws a slice sized by their share of points. Because the pool is replenished by ongoing
-        contributions, you can take more than you have put in so far, funded by the stream, not a
-        fixed pot. Size OR consistency earns you a winning share; only the small-and-infrequent fall
-        behind. Consistency pays twice: a 7-day streak lifts points up to 1.7x AND raises your cap
-        from 10% to 33.3%. The Solana program enforces all of it.
+        A Polish-flavored savings circle (inspired by the Kasa Zapomogowo-Pożyczkowa, esusu/ajo).
+        Each deposit splits in two: <strong>50% flows down</strong> to everyone who joined earlier,
+        split by their share of the pool, and <strong>50% is gifted up</strong> to the very next
+        person who deposits — so no one ever lands on $0. The first member&apos;s down-half seeds a
+        locked floor. You earn by joining early and by the stream continuing; like any ajo, it only
+        keeps paying while contributions keep coming. The Solana program settles every split.
       </p>
-
-      {s?.youMissedLast && (
-        <p className="note warn">
-          ⚠ You missed a period, so your points decayed 10% and your streak reset. Loss aversion is
-          the point: show up to keep your edge.
-        </p>
-      )}
 
       <div className="grid">
         <div className="card">
-          <div className="k">Vault</div>
-          <div className="v">{s ? usd(s.vault) : "$0.00"}</div>
-          <div className="bar">
-            <div className="bar-fill" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="k" style={{ marginTop: 6 }}>
-            {progress >= 100 ? "payout unlocked" : `${usd(s ? s.vMin : 0)} to unlock`}
-          </div>
+          <div className="k">Pool</div>
+          <div className="v">{s ? usd(s.poolTotal) : "$0.00"}</div>
         </div>
         <div className="card">
-          <div className="k">Your points</div>
-          <div className="v green">{you ? Math.round(you.points / 10000) / 100 : 0}</div>
-          <div className="k" style={{ marginTop: 6 }}>
-            streak {you?.streak ?? 0} ({mult(you?.streak ?? 0)}) · {sharePct.toFixed(1)}% of pool
-          </div>
+          <div className="k">Locked floor</div>
+          <div className="v">{s ? usd(s.floor) : "$0.00"}</div>
         </div>
         <div className="card">
-          <div className="k">You put in</div>
-          <div className="v blue">{you ? usd(you.contributed) : "$0.00"}</div>
-          <div className="k" style={{ marginTop: 6 }}>
-            if you claimed now: {you && s && s.pTotal > 0
-              ? usd(
-                  Math.min(
-                    Math.floor((you.points * s.vault) / s.pTotal),
-                    Math.floor((betaBps(you.streak) * s.vault) / 10000)
-                  )
-                )
-              : "$0.00"}{you ? ` (cap ${(betaBps(you.streak) / 100).toFixed(1)}%)` : ""}
-          </div>
+          <div className="k">Up-gift for next depositor</div>
+          <div className="v blue">{s ? usd(s.upReserve) : "$0.00"}</div>
         </div>
       </div>
 
@@ -126,99 +84,74 @@ export default function Home() {
           onChange={(e) => setAmount(Number(e.target.value))}
           disabled={busy}
         />
-        <button onClick={() => act(() => post("/api/contribute", { amount: amount * USDC }))} disabled={busy}>
-          Contribute ${amount}
+        <button onClick={() => act(() => post("/api/deposit", { amount: amount * USDC }))} disabled={busy}>
+          You deposit ${amount}
         </button>
         <button onClick={() => act(() => post("/api/advance"))} disabled={busy} className="secondary">
-          Advance a day
+          Someone else deposits
         </button>
         <button
-          onClick={() => act(() => post("/api/payout"))}
-          disabled={busy || !s?.canPayout}
-          className="secondary"
+          onClick={() => act(() => post("/api/withdraw"))}
+          disabled={busy || !you || you.balance === 0}
+          className="ghost"
         >
-          Trigger payout
+          Withdraw {you ? usd(you.balance) : "$0.00"}
         </button>
         <button onClick={() => act(() => post("/api/reset"))} disabled={busy} className="ghost">
           Reset
         </button>
       </div>
       <p className="note">
-        Day {s?.period ?? 0} · {s?.payouts.length ?? 0} payouts so far. Contribute, then advance the
-        day to let the others contribute (some skip and lose points). Trigger a payout once the vault
-        is full.
+        Deposit early, then let others deposit and watch your claimable balance grow from their
+        down-splits. The next person to deposit collects the up-gift shown above.
       </p>
 
       <div className="section">
-        <h2>The circle</h2>
+        <h2>The circle (in join order)</h2>
         <table>
           <thead>
             <tr>
+              <th>#</th>
               <th>Member</th>
-              <th>Points</th>
-              <th>Streak</th>
-              <th>Put in</th>
-              <th>Share</th>
+              <th>Deposited</th>
+              <th>Claimable</th>
+              <th>Net</th>
             </tr>
           </thead>
           <tbody>
-            {s?.members.map((m) => (
-              <tr key={m.id} className={m.id === s.frontId ? "front" : m.you ? "self" : ""}>
-                <td>
-                  {m.name}
-                  {m.id === s.frontId && <span className="badge ok">next</span>}
-                </td>
-                <td className="reward">{Math.round(m.points / 10000) / 100}</td>
-                <td className="mono">
-                  {m.streak} ({mult(m.streak)})
-                </td>
-                <td className="mono">{usd(m.contributed)}</td>
-                <td className="mono">
-                  {s.pTotal > 0 ? ((m.points / s.pTotal) * 100).toFixed(1) : "0.0"}%
+            {s?.members
+              .filter((m) => m.deposited > 0)
+              .map((m) => (
+                <tr key={m.id} className={m.you ? "self" : ""}>
+                  <td className="mono">{m.order}</td>
+                  <td>{m.name}</td>
+                  <td className="mono">{usd(m.deposited)}</td>
+                  <td className="reward">{usd(m.balance)}</td>
+                  <td className={net(m) >= 0 ? "reward" : "mono"} style={net(m) < 0 ? { color: "var(--warn)" } : {}}>
+                    {net(m) >= 0 ? "+" : ""}
+                    {usd(net(m))}
+                  </td>
+                </tr>
+              ))}
+            {(!s || s.members.filter((m) => m.deposited > 0).length === 0) && (
+              <tr>
+                <td colSpan={5} className="empty">
+                  No deposits yet. Be the first — your down-half seeds the locked floor.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
 
-      <div className="section">
-        <h2>Payouts</h2>
-        {!s || s.payouts.length === 0 ? (
-          <div className="empty">No payouts yet. Fill the vault to {s ? usd(s.vMin) : "$15"}.</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Member</th>
-                <th>Put in</th>
-                <th>Took out</th>
-                <th>Vault left</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.payouts.map((p) => (
-                <tr key={p.round}>
-                  <td className="mono">{p.round}</td>
-                  <td>{p.name}</td>
-                  <td className="mono">{usd(p.contributed)}</td>
-                  <td className="reward">{usd(p.paidOut)}</td>
-                  <td className="mono">{usd(p.remaining)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
       <p className="note">
-        On-chain (program <span className="mono">circle</span>): the vault is a PDA escrow; points
-        accrue from amount × streak; <span className="mono">claim</span> pays{" "}
-        <span className="mono">min(points/Σpoints · vault, β(streak) · vault)</span> where the cap
-        β rises with your streak from 10% to 33.3%, then burns only the points you cashed out. You
-        can take more than you have put in so far because the vault is replenished by ongoing
-        contributions, and it can never be drained because any payout is only a capped share of it.
+        On-chain (program <span className="mono">circle</span>): the vault is a PDA escrow; each{" "}
+        <span className="mono">deposit</span> credits earlier members&apos; claimable balances by
+        share (a constant-time reward-per-share index, no iteration), gifts the up-half to the next
+        depositor, and locks the first down-half as the floor. <span className="mono">withdraw</span>{" "}
+        pays out your accrued balance. Honest constraint: this is a contribution-funded circle —
+        early and ongoing depositors are favored, and it unwinds if deposits stop (the inherent ajo
+        risk).
       </p>
     </main>
   );

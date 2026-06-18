@@ -2,37 +2,24 @@ export interface Member {
   id: string;
   name: string;
   you: boolean;
-  points: number;
-  streak: number;
-  contributed: number;
-  lastPeriod: number;
-}
-
-export interface Payout {
-  round: number;
-  name: string;
-  contributed: number;
-  paidOut: number;
-  remaining: number;
+  order: number; // join sequence (0 = not yet joined)
+  deposited: number; // cumulative deposit = share basis
+  balance: number; // claimable dividends received
+  withdrawn: number; // already withdrawn
 }
 
 export interface CircleState {
-  period: number;
-  round: number;
-  vault: number;
-  pTotal: number;
-  vMin: number;
-  canPayout: boolean;
-  frontId: string | null; // member at the front of the queue (highest points, eligible)
-  youMissedLast: boolean;
-  members: Member[]; // sorted by points desc
-  payouts: Payout[]; // newest first
+  poolTotal: number; // sum of all deposits (share denominator)
+  floor: number; // first member's down-half, locked forever
+  upReserve: number; // the up-gift waiting for the next depositor
+  members: Member[]; // in join order (joined only), newest last
+  you: Member | null;
 }
 
 export interface CircleClient {
   getState(): Promise<CircleState>;
-  contribute(amount: number): Promise<CircleState>; // you
-  advance(): Promise<CircleState>; // a period passes: others contribute, missers decay
-  payout(): Promise<CircleState>; // front of queue collects
+  deposit(amount: number): Promise<CircleState>; // you
+  advance(): Promise<CircleState>; // another member deposits
+  withdraw(): Promise<CircleState>; // you claim your balance
   reset(): Promise<void>;
 }
