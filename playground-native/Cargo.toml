@@ -13,6 +13,10 @@ crate-type = ["cdylib", "lib"]
 solana-program = "1.18.26"
 borsh = "0.10.4"
 spl-token = { version = "4.0", features = ["no-entrypoint"] }
+# Pin transitive crates whose newest versions require edition2024 (Rust 1.85),
+# which the sBPFv1 toolchain's Rust 1.75 can't compile. These keep the resolver
+# on versions that build on 1.75.
+zeroize = "=1.7.0"
 
 [profile.release]
 overflow-checks = true
