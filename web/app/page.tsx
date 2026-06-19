@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import WalletDeposit from "../components/WalletDeposit";
 
 const USDC = 1_000_000;
 const usd = (b: number) => "$" + (b / USDC).toFixed(2);
@@ -178,6 +179,8 @@ export default function Home() {
           transaction signature linking to the explorer.
         </p>
       </div>
+
+      <WalletDeposit />
 
       <div className="section">
         <h2>The circle (in join order)</h2>

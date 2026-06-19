@@ -69,6 +69,9 @@ The reward-per-share index is the core trick: instead of looping over members on
 
 - **Program ID:** [`6EvXiKocGuqDGQcNR3jFKJutWoVr5Qiips5hm2AfngpV`](https://explorer.solana.com/address/6EvXiKocGuqDGQcNR3jFKJutWoVr5Qiips5hm2AfngpV?cluster=devnet)
 - **Deploy transaction:** [`25vwe7…iZCm`](https://explorer.solana.com/tx/25vwe7L6PByrXpj7GBUpbV3dA5NHM6pJTEk6HGGofMd74NoFHZ7nDcpU87wTmX9m3hfeDCxm5Lfo7sRdACn2iZCm?cluster=devnet)
+- **Live instruction transactions** (produced by `playground-native/client/demo.mjs` against the deployed program):
+  - `deposit` (member 2 contributes; 50% splits down to the earlier member, 50% reserves up): [`3LsJLL…SztuQ`](https://explorer.solana.com/tx/3LsJLLDb9dHquEUgbvLsAh9n3sGqpTebsEM3UP1VU9uNhfRV8Qx2E9BTP2DfjEAsAhCHSoNsoL2wAXrqWBuSztuQ?cluster=devnet)
+  - `withdraw` (member 1 pulls the down-split they earned out of escrow): [`3V4GsU…DfCa4V`](https://explorer.solana.com/tx/3V4GsUqmJn3rMBMTJACNM744SdrjxeZL5QJfoecP7nnzNc3p7QduhVA4iqhjBYBX2N6mmgJNVWyERCjbDyDfCa4V?cluster=devnet)
 - Deployed as the **native** crate in `playground-native/` (small, cheap to deploy), built on the
   latest official toolchain with `cargo build-sbf --arch v3` (the sBPF version devnet enables). The
   on-chain logic is identical to the Anchor implementation in `programs/circle/`.
