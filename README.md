@@ -67,19 +67,30 @@ The reward-per-share index is the core trick: instead of looping over members on
 
 ## Devnet
 
-- Program ID: `<filled after deploy>`
-- Example transactions: open + join `<tx>` · first deposit (floor seeded) `<tx>` · second deposit
-  (up-gift + down-split) `<tx>` · withdraw `<tx>`
+- **Program ID:** [`6EvXiKocGuqDGQcNR3jFKJutWoVr5Qiips5hm2AfngpV`](https://explorer.solana.com/address/6EvXiKocGuqDGQcNR3jFKJutWoVr5Qiips5hm2AfngpV?cluster=devnet)
+- **Deploy transaction:** [`25vwe7…iZCm`](https://explorer.solana.com/tx/25vwe7L6PByrXpj7GBUpbV3dA5NHM6pJTEk6HGGofMd74NoFHZ7nDcpU87wTmX9m3hfeDCxm5Lfo7sRdACn2iZCm?cluster=devnet)
+- Deployed as the **native** crate in `playground-native/` (small, cheap to deploy), built on the
+  latest official toolchain with `cargo build-sbf --arch v3` (the sBPF version devnet enables). The
+  on-chain logic is identical to the Anchor implementation in `programs/circle/`.
 
 ## Run it (testable client)
 
-**Program (Codespace or Linux):**
+**Program — the deployed native build (what's on devnet):**
+```bash
+# latest official Solana toolchain: new Rust compiles every dep, --arch picks a devnet-enabled sBPF
+sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+cd playground-native
+cargo build-sbf --arch v3
+solana program deploy target/deploy/kzp_circle.so
+```
+
+**Or the Anchor implementation (same logic, with tests) in `programs/circle/`:**
 ```bash
 npm install
 anchor build && anchor keys sync && anchor build
 anchor test          # open/join, floor seeding, up-gift + down-split, withdraw
-anchor deploy --provider.cluster devnet
 ```
+See `SOLANA-DEPLOY-DEBUG-LOG.md` for the full toolchain debugging trail.
 
 **Client demo:**
 ```bash

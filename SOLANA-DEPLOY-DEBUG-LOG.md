@@ -100,11 +100,14 @@ There are **three toolchain zones**, and you must land in the middle:
 - **RIGHT fix (build new, target old):** keep the **latest** toolchain so every dependency compiles,
   but **force the emitted sBPF down to the baseline v1** that all clusters enable:
   ```bash
-  cargo build-sbf --arch sbfv1
-  # if the flag/value is rejected: cargo build-sbf --help | grep -i arch   (use the listed value)
-  # fallback: RUSTFLAGS="-C target-cpu=v1" cargo build-sbf
+  # --arch values are v1 / v2 / v3 ... Pick the HIGHEST the cluster enables (NOT the toolchain default,
+  # which can be higher than the cluster supports). On DEVNET the default was rejected; --arch v3 worked.
+  cargo build-sbf --arch v3
+  # check valid values if unsure: cargo build-sbf --help | grep -i arch
   ```
-  This is the whole resolution of the saga: **new Rust to compile, sBPFv1 to deploy.**
+  This is the whole resolution of the saga: **new Rust to compile, an sBPF version the cluster
+  actually enables (devnet = v3) to deploy.** ✅ Confirmed: Program
+  `6EvXiKocGuqDGQcNR3jFKJutWoVr5Qiips5hm2AfngpV` deployed to devnet this way.
 - **Reclaim stranded SOL first:** a failed deploy leaves a buffer account holding your lamports
   (the CLI prints its seed phrase + address). Recover before retrying: `solana program close --buffers`.
 
