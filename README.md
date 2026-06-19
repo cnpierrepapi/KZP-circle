@@ -72,6 +72,8 @@ The reward-per-share index is the core trick: instead of looping over members on
 - Deployed as the **native** crate in `playground-native/` (small, cheap to deploy), built on the
   latest official toolchain with `cargo build-sbf --arch v3` (the sBPF version devnet enables). The
   on-chain logic is identical to the Anchor implementation in `programs/circle/`.
+- **Drive it live:** `playground-native/client/demo.mjs` runs the full flow on devnet (mint → open →
+  join ×2 → deposit ×2 → withdraw) and prints an explorer link for every real transaction — see below.
 
 ## Run it (testable client)
 

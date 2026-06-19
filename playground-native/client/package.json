@@ -1,0 +1,10 @@
+{
+  "name": "kzp-circle-client",
+  "private": true,
+  "type": "module",
+  "description": "Devnet client/demo that drives the deployed KZP circle program with real transactions",
+  "dependencies": {
+    "@solana/web3.js": "^1.95.3",
+    "@solana/spl-token": "^0.4.8"
+  }
+}
