@@ -1,6 +1,8 @@
 # KZP — an on-chain contribution circle (esusu / ajo)
 
-**Live demo:** https://web-ten-liart-30.vercel.app
+**Live demo:** https://web-ten-liart-30.vercel.app — scroll to **"Try it for real on devnet"** to
+connect Phantom and make an actual on-chain deposit (mints you a demo token, opens your own circle,
+deposits), with a live Solana Explorer link for every transaction.
 
 A savings/contribution circle implemented as a Solana program, in the spirit of the Polish
 **Kasa Zapomogowo-Pożyczkowa (KZP)** and West-African **esusu / ajo**: members pool money over
